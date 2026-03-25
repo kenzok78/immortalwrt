@@ -10,7 +10,7 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=drv_tapi
 PKG_VERSION:=3.13.0
-PKG_RELEASE:=4
+PKG_RELEASE:=6
 
 PKG_SOURCE:=drv_tapi-$(PKG_VERSION).tar.bz2
 PKG_SOURCE_URL:=@OPENWRT
@@ -19,13 +19,13 @@ PKG_MAINTAINER:=John Crispin <john@phrozen.org>
 
 PKG_CHECK_FORMAT_SECURITY:=0
 PKG_FIXUP:=autoreconf
+PKG_EXTMOD_SUBDIRS:=src
 
 include $(INCLUDE_DIR)/package.mk
 
 define KernelPackage/ltq-tapi
   SUBMENU:=Voice over IP
   TITLE:=Lantiq TAPI subsystem
-  URL:=http://www.lantiq.com/
   DEPENDS:=@(TARGET_lantiq_falcon||TARGET_lantiq_xway||TARGET_lantiq_xrx200) +kmod-ltq-ifxos
   FILES:=$(PKG_BUILD_DIR)/src/drv_tapi.ko
   AUTOLOAD:=$(call AutoLoad,20,drv_tapi)
@@ -38,6 +38,9 @@ endef
 define KernelPackage/ltq-tapi/config
 	source "$(SOURCE)/Config.in"
 endef
+
+MAKE_FLAGS += \
+	$(KERNEL_MAKE_FLAGS)
 
 CONFIGURE_ARGS += \
 	ARCH=$(LINUX_KARCH) \

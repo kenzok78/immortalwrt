@@ -40,7 +40,7 @@ int mtd_get_squashfs_len(struct mtd_info *master,
 
 	err = mtd_read(master, offset, sizeof(sb), &retlen, (void *)&sb);
 	if (err || (retlen != sizeof(sb))) {
-		pr_alert("error occurred while reading from \"%s\"\n",
+		pr_alert("error occured while reading from \"%s\"\n",
 			 master->name);
 		return -EIO;
 	}
@@ -53,7 +53,7 @@ int mtd_get_squashfs_len(struct mtd_info *master,
 	retlen = le64_to_cpu(sb.bytes_used);
 	if (retlen <= 0) {
 		pr_alert("squashfs is empty in \"%s\"\n", master->name);
-		return -ENODEV;
+		return -ENOENT;
 	}
 
 	if (offset + retlen > master->size) {
@@ -124,7 +124,7 @@ int mtd_find_rootfs_from(struct mtd_info *mtd,
 		return 0;
 	}
 
-	return -ENODEV;
+	return -ENOENT;
 }
 EXPORT_SYMBOL_GPL(mtd_find_rootfs_from);
 

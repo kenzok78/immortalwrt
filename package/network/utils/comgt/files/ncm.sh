@@ -10,6 +10,7 @@ proto_ncm_init_config() {
 	no_device=1
 	available=1
 	proto_config_add_string "device:device"
+	proto_config_add_string ifname
 	proto_config_add_string apn
 	proto_config_add_string auth
 	proto_config_add_string username
@@ -18,19 +19,23 @@ proto_ncm_init_config() {
 	proto_config_add_string delay
 	proto_config_add_string mode
 	proto_config_add_string pdptype
+	proto_config_add_boolean sourcefilter
+	proto_config_add_boolean delegate
 	proto_config_add_int profile
+	proto_config_add_int mtu
 	proto_config_add_defaults
 }
 
 proto_ncm_setup() {
 	local interface="$1"
 
-	local manufacturer initialize setmode connect finalize ifname devname devpath
+	local connect context_type devname devpath finalize ifpath initialize manufacturer setmode
 
-	local device apn auth username password pincode delay mode pdptype profile $PROTO_DEFAULT_OPTIONS
-	json_get_vars device apn auth username password pincode delay mode pdptype profile $PROTO_DEFAULT_OPTIONS
+	local delegate ip4table ip6table mtu sourcefilter $PROTO_DEFAULT_OPTIONS
+	json_get_vars delegate ip4table ip6table mtu sourcefilter $PROTO_DEFAULT_OPTIONS
 
-	local context_type
+	local apn auth delay device ifname mode password pdptype pincode profile username
+	json_get_vars apn auth delay device ifname mode password pdptype pincode profile username
 
 	[ "$metric" = "" ] && metric="0"
 
@@ -59,17 +64,25 @@ proto_ncm_setup() {
 		return 1
 	}
 
-	devname="$(basename "$device")"
-	case "$devname" in
-	'tty'*)
-		devpath="$(readlink -f /sys/class/tty/$devname/device)"
-		ifname="$( ls "$devpath"/../../*/net )"
-		;;
-	*)
-		devpath="$(readlink -f /sys/class/usbmisc/$devname/device/)"
-		ifname="$( ls "$devpath"/net )"
-		;;
-	esac
+	[ -z "$ifname" ] && {
+		devname="$(basename "$device")"
+		case "$devname" in
+		'ttyACM'*)
+			devpath="$(readlink -f /sys/class/tty/$devname/device)"
+			ifpath="$devpath/../*/net"
+			;;
+		'tty'*)
+			devpath="$(readlink -f /sys/class/tty/$devname/device)"
+			ifpath="$devpath/../../*/net"
+			;;
+		*)
+			devpath="$(readlink -f /sys/class/usbmisc/$devname/device/)"
+			ifpath="$devpath/net"
+			;;
+		esac
+		ifname="$(ls $(ls -1 -d $ifpath | head -n 1))"
+	}
+
 	[ -n "$ifname" ] || {
 		echo "The interface could not be found."
 		proto_notify_error "$interface" NO_IFACE
@@ -79,7 +92,7 @@ proto_ncm_setup() {
 
 	start=$(date +%s)
 	while true; do
-		manufacturer=$(gcom -d "$device" -s /etc/gcom/getcardinfo.gcom | awk 'NF && $0 !~ /AT\+CGMI/ { sub(/\+CGMI: /,""); print tolower($1); exit; }')
+		manufacturer=$(gcom -d "$device" -s /etc/gcom/getcardinfo.gcom | awk -v RS='\r?\n' 'NF && $0 !~ /AT\+CGMI/ { sub(/\+CGMI: /,""); print tolower($1); exit; }')
 		[ "$manufacturer" = "error" ] && {
 			manufacturer=""
 		}
@@ -180,9 +193,9 @@ proto_ncm_setup() {
 		json_add_string ifname "@$interface"
 		json_add_string proto "dhcp"
 		proto_add_dynamic_defaults
-		[ -n "$zone" ] && {
-			json_add_string zone "$zone"
-		}
+		[ -n "$zone" ] && json_add_string zone "$zone"
+		[ -n "$ip4table" ] && json_add_string ip4table "$ip4table"
+
 		json_close_object
 		ubus call network add_dynamic "$(json_dump)"
 	}
@@ -193,12 +206,19 @@ proto_ncm_setup() {
 		json_add_string ifname "@$interface"
 		json_add_string proto "dhcpv6"
 		json_add_string extendprefix 1
+		[ "$delegate" = "0" ] && json_add_boolean delegate "0"
+		[ "$sourcefilter" = "0" ] && json_add_boolean sourcefilter "0"
 		proto_add_dynamic_defaults
-		[ -n "$zone" ] && {
-			json_add_string zone "$zone"
-		}
+		[ -n "$zone" ] && json_add_string zone "$zone"
+		[ -n "$ip6table" ] && json_add_string ip6table "$ip6table"
+
 		json_close_object
 		ubus call network add_dynamic "$(json_dump)"
+	}
+
+	[ -n "$mtu" -a "$mtu" != 0 ] && {
+		echo "Setting MTU of $ifname to $mtu"
+		/sbin/ip link set dev $ifname mtu $mtu
 	}
 
 	[ -n "$finalize" ] && {
